@@ -1,0 +1,35 @@
+name: Sync release notes
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "36 */4 * * *"
+
+jobs:
+  sync-release-notes:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Copy upstream release notes
+        env:
+          GH_TOKEN: ${{ secrets.PUSH_TOKEN }}
+          FORK_REPO: ${{ github.repository }}
+          UPSTREAM_REPO: storj/uplink-c
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh api "repos/${FORK_REPO}/releases" --paginate --jq '.[].tag_name' |
+          while read -r tag; do
+            notes="$(mktemp)"
+
+            if title="$(gh release view "${tag}" --repo "${UPSTREAM_REPO}" --json name --jq .name)" &&
+              gh release view "${tag}" --repo "${UPSTREAM_REPO}" --json body --jq .body > "${notes}"; then
+              gh release edit "${tag}" --repo "${FORK_REPO}" --title "${title}" --notes-file "${notes}"
+            else
+              echo "No upstream release found for ${tag}"
+            fi
+
+            rm -f "${notes}"
+          done
